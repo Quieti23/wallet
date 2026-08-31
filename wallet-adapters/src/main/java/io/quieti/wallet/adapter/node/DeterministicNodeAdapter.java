@@ -2,8 +2,14 @@ package io.quieti.wallet.adapter.node;
 
 import io.quieti.wallet.application.port.NodePort;
 import io.quieti.wallet.domain.chain.ChainBlock;
+import io.quieti.wallet.domain.chain.ChainCheckpoint;
 
 public final class DeterministicNodeAdapter implements NodePort {
+
+    @Override
+    public ChainCheckpoint initialCheckpoint(String chain) {
+        return new ChainCheckpoint(0, hash(chain, 0));
+    }
 
     @Override
     public ChainBlock fetchBlock(String chain, long height) {

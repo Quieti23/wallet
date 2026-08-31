@@ -1,4 +1,6 @@
 spring:
+  flyway:
+    enabled: false
   datasource:
     url: ${WALLET_DB_URL}
     username: ${WALLET_DB_USERNAME}
@@ -9,5 +11,35 @@ spring:
       validation-timeout: 1s
 
 wallet:
+  scanners:
+    shadow-mode: ${WALLET_SCANNER_SHADOW_MODE:false}
   scan:
     owner-id: ${HOSTNAME}
+  rpc:
+    enabled: true
+    chains:
+      BTC_TESTNET:
+        endpoint: ${WALLET_BTC_RPC_URL}
+        username: ${WALLET_BTC_RPC_USERNAME}
+        password: ${WALLET_BTC_RPC_PASSWORD}
+        start-height: ${WALLET_BTC_START_HEIGHT}
+        start-hash: ${WALLET_BTC_START_HASH}
+        max-skipped-positions: 0
+      EVM:
+        endpoint: ${WALLET_EVM_RPC_URL}
+        api-key: ${WALLET_EVM_RPC_API_KEY:}
+        start-height: ${WALLET_EVM_START_HEIGHT}
+        start-hash: ${WALLET_EVM_START_HASH}
+        max-skipped-positions: 0
+      SOL:
+        endpoint: ${WALLET_SOL_RPC_URL}
+        api-key: ${WALLET_SOL_RPC_API_KEY:}
+        start-height: ${WALLET_SOL_START_SLOT}
+        start-hash: ${WALLET_SOL_START_HASH}
+        max-skipped-positions: ${WALLET_SOL_MAX_SKIPPED_SLOTS:32}
+      TON:
+        endpoint: ${WALLET_TON_RPC_URL}
+        api-key: ${WALLET_TON_RPC_API_KEY:}
+        start-height: ${WALLET_TON_START_SEQNO}
+        start-hash: ${WALLET_TON_START_HASH}
+        max-skipped-positions: 0

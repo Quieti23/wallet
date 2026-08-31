@@ -1,6 +1,5 @@
 package io.quieti.wallet.adapter.persistence;
 
-import io.quieti.wallet.adapter.node.DeterministicNodeAdapter;
 import io.quieti.wallet.application.port.ScanPartitionRepository;
 import io.quieti.wallet.domain.chain.ChainBlock;
 import io.quieti.wallet.domain.chain.ChainCheckpoint;
@@ -24,7 +23,12 @@ public final class JdbcScanPartitionRepository implements ScanPartitionRepositor
 
     @Override
     public ScanLease acquire(
-            String partitionId, String chain, String ownerId, Instant now, Duration leaseDuration) {
+            String partitionId,
+            String chain,
+            String ownerId,
+            ChainCheckpoint initialCheckpoint,
+            Instant now,
+            Duration leaseDuration) {
         return transactions.execute(status -> {
             List<ScanLease> existing = findForUpdate(partitionId);
             if (existing.isEmpty()) {
@@ -32,12 +36,13 @@ public final class JdbcScanPartitionRepository implements ScanPartitionRepositor
                         INSERT INTO scan_partition
                             (partition_id, chain, owner_id, lease_version, lease_until,
                              checkpoint_height, checkpoint_hash, updated_at)
-                        VALUES (?, ?, NULL, 0, ?, 0, ?, ?)
+                        VALUES (?, ?, NULL, 0, ?, ?, ?, ?)
                         """,
                         partitionId,
                         chain,
                         Timestamp.from(Instant.EPOCH),
-                        DeterministicNodeAdapter.hash(chain, 0),
+                        initialCheckpoint.height(),
+                        initialCheckpoint.blockHash(),
                         Timestamp.from(now));
                 existing = findForUpdate(partitionId);
             }

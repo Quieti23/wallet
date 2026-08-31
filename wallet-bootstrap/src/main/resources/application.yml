@@ -1,6 +1,8 @@
 spring:
   application:
     name: wallet-service
+  flyway:
+    enabled: false
   datasource:
     url: jdbc:h2:mem:wallet;MODE=MySQL;DB_CLOSE_DELAY=-1
     username: sa
@@ -23,8 +25,62 @@ management:
         enabled: true
 
 wallet:
+  scanners:
+    shadow-mode: false
+    btc:
+      enabled: false
+      network: BTC_TESTNET
+      scanner-id: deposit
+      poll-interval: 5s
+      max-reorg-depth: 100
+      max-cycle-retries: 3
+      confirmations: 3
+    evm:
+      enabled: false
+      chain-id: 11155111
+      scanner-id: deposit
+      poll-interval: 5s
+      max-reorg-depth: 128
+      max-cycle-retries: 3
+      observation-head: safe
+      finality-head: finalized
+      fallback-confirmations: 12
+      include-internal: false
+      provider-keys:
+        - EVM
+    solana:
+      enabled: false
+      genesis-hash: EtWTRABZaYq6iMfeYKouRu166VU2xqa1
+      scanner-id: deposit
+      poll-interval: 5s
+      max-reorg-depth: 128
+      max-cycle-retries: 3
+      max-slot-lag: 16
+      base-backoff: 1s
+      max-backoff: 1m
+      provider-keys:
+        - SOL
+      assets: []
+      token-accounts: {}
+    ton:
+      enabled: false
+      network: testnet
+      scanner-id: deposit
+      poll-interval: 5s
+      max-reorg-depth: 128
+      max-cycle-retries: 3
+      observation-depth: 0
+      finality-depth: 1
+      provider-key: TON
+      jettons: []
   scan:
     owner-id: ${HOSTNAME:wallet-local}
     lease-duration: 30s
     threads: 4
     queue-capacity: 128
+  rpc:
+    enabled: false
+    connect-timeout: 2s
+    request-timeout: 10s
+    max-response-bytes: 16777216
+    chains: {}

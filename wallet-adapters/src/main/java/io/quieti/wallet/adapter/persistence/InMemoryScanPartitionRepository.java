@@ -1,6 +1,5 @@
 package io.quieti.wallet.adapter.persistence;
 
-import io.quieti.wallet.adapter.node.DeterministicNodeAdapter;
 import io.quieti.wallet.application.port.ScanPartitionRepository;
 import io.quieti.wallet.domain.chain.ChainBlock;
 import io.quieti.wallet.domain.chain.ChainCheckpoint;
@@ -16,11 +15,15 @@ public final class InMemoryScanPartitionRepository implements ScanPartitionRepos
 
     @Override
     public synchronized ScanLease acquire(
-            String partitionId, String chain, String ownerId, Instant now, Duration leaseDuration) {
+            String partitionId,
+            String chain,
+            String ownerId,
+            ChainCheckpoint initialCheckpoint,
+            Instant now,
+            Duration leaseDuration) {
         PartitionState state = partitions.computeIfAbsent(
                 partitionId,
-                ignored -> new PartitionState(chain, null, 0, Instant.EPOCH,
-                        new ChainCheckpoint(0, DeterministicNodeAdapter.hash(chain, 0))));
+                ignored -> new PartitionState(chain, null, 0, Instant.EPOCH, initialCheckpoint));
         if (!state.chain.equals(chain)) {
             throw new IllegalArgumentException("Partition is already assigned to another chain");
         }
@@ -42,7 +45,7 @@ public final class InMemoryScanPartitionRepository implements ScanPartitionRepos
                 || !lease.ownerId().equals(state.ownerId)
                 || lease.leaseVersion() != state.leaseVersion
                 || !state.leaseUntil.isAfter(now)
-                || block.height() != state.checkpoint.height() + 1
+                || block.height() <= state.checkpoint.height()
                 || !block.parentHash().equals(state.checkpoint.blockHash())) {
             return false;
         }

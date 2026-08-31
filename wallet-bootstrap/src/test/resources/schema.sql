@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS chain_block;
+DROP TABLE IF EXISTS scan_partition;
+
 CREATE TABLE scan_partition (
     partition_id VARCHAR(100) PRIMARY KEY,
     chain VARCHAR(32) NOT NULL,

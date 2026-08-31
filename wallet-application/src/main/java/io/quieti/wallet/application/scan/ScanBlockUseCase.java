@@ -32,7 +32,13 @@ public final class ScanBlockUseCase {
 
     public ChainBlock scanNext(String partitionId, String chain, String ownerId) {
         Instant now = clock.instant();
-        ScanLease lease = partitionRepository.acquire(partitionId, chain, ownerId, now, leaseDuration);
+        ScanLease lease = partitionRepository.acquire(
+            partitionId,
+            chain,
+            ownerId,
+            nodePort.initialCheckpoint(chain),
+            now,
+            leaseDuration);
         long nextHeight = lease.checkpoint().height() + 1;
         ChainBlock block = nodePort.fetchBlock(chain, nextHeight);
         if (!block.parentHash().equals(lease.checkpoint().blockHash())) {

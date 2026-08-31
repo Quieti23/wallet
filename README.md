@@ -1,12 +1,12 @@
 # Wallet Service
 
-Java 21 LTS and Spring Boot wallet service scaffold based on the architecture and safety constraints in `day26.md`.
+Java 21 LTS and Spring Boot implementation of the Go-compatible four-chain deposit scanner for Bitcoin Testnet/Signet, EVM, Solana and TON.
 
 ## Modules
 
 - `wallet-domain`: immutable chain, amount, checkpoint and signing value objects; no Spring or persistence dependencies.
-- `wallet-application`: scan use case and outbound ports. It enforces parent-hash continuity and fencing-token commits.
-- `wallet-adapters`: node and persistence adapters. The deterministic node is for local verification only.
+- `wallet-application`: protocol-neutral scanner contracts, coordinator, finality and shadow comparison flow.
+- `wallet-adapters`: chain RPC clients and the Go-schema-compatible MySQL repository.
 - `wallet-bootstrap`: Spring wiring, validated configuration, bounded scan executor, HTTP API, health probes and lifecycle settings.
 
 ## Prerequisites
@@ -23,7 +23,7 @@ mvn clean verify
 java -jar wallet-bootstrap\target\wallet-bootstrap-0.1.0-SNAPSHOT.jar
 ```
 
-The local profile uses an in-memory H2 database in MySQL compatibility mode. Trigger two consecutive blocks:
+The local profile uses an in-memory H2 database in MySQL compatibility mode. Trigger two deterministic legacy scan blocks:
 
 ```powershell
 Invoke-RestMethod -Method Post http://localhost:8080/api/v1/scans/evm/evm-main/next
@@ -43,4 +43,78 @@ $env:WALLET_DB_PASSWORD = '<from-secret-manager>'
 java -jar wallet-bootstrap\target\wallet-bootstrap-0.1.0-SNAPSHOT.jar
 ```
 
-The current node adapter generates deterministic blocks to exercise ordering, lease and checkpoint behavior. Before production, replace it with per-chain RPC adapters and add provider-specific deadlines, retries, circuit breakers, rate limits, canonical transaction parsing, Outbox/MQ, withdrawal state machines and an isolated HSM/MPC signer. The service does not hold private keys or perform real transfers.
+The unified scanners are disabled by default. Enable only the required chain scanners and provide trusted start checkpoints and provider credentials. The service does not hold private keys or perform transfers.
+
+## Shadow verification
+
+Shadow mode runs the Java adapters against the configured providers and compares their canonical units and deposit observations with the Go-owned rows in MySQL. It uses an independent `<scanner-id>-shadow` in-memory cursor initialized from the adapter's trusted checkpoint. It never calls Commit, Rollback or AdvanceFinality, so it cannot write scan cursors, lifecycle history, ledger entries or Outbox events.
+
+Keep the Go scanner active while shadow mode is running:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = 'prod'
+$env:WALLET_SCANNER_SHADOW_MODE = 'true'
+$env:WALLET_SCANNERS_BTC_ENABLED = 'true'
+java -jar wallet-bootstrap\target\wallet-bootstrap-0.1.0-SNAPSHOT.jar
+```
+
+Inspect counters through Actuator:
+
+```powershell
+Invoke-RestMethod http://localhost:8080/actuator/metrics/wallet.shadow.batches
+Invoke-RestMethod http://localhost:8080/actuator/metrics/wallet.shadow.items
+Invoke-RestMethod http://localhost:8080/actuator/metrics/wallet.shadow.differences
+```
+
+Counters use only `chain`, `scanner`, `result` and `kind` tags. Every difference also emits a structured `Shadow scan semantic difference` warning with position, expected value and actual value. A Java restart intentionally replays shadow verification from the trusted checkpoint because shadow state is never persisted.
+
+Do not cut over until all enabled chains have completed the agreed observation window, `wallet.shadow.differences` has not increased, every batch reports `result=match`, and provider/checkpoint configuration has been independently reviewed.
+
+## Single-active cutover
+
+Only one normal scanner may own a `(chain_ref, scanner_id)` at a time. Shadow mode is read-only and is the only supported period in which Go and Java scanners may run concurrently.
+
+1. Record the Go scanner cursor point and version for every chain. Record pending/failed Outbox counts and the reconciliation queries below.
+2. Stop the Java shadow process, then stop and verify termination of every Go scanner worker.
+3. Confirm no cursor version changes for at least two normal poll intervals. Do not continue if any cursor still moves.
+4. Start exactly one Java instance with `WALLET_SCANNER_SHADOW_MODE=false` and only the approved chain scanner flags enabled.
+5. Verify that Java loads the existing Go cursor and advances its version by CAS. Check scanner errors, cursor lag, Outbox publication and balanced ledger entries before enabling another chain.
+6. Preserve the captured pre-cutover evidence and monitor through the full finality window.
+
+Never start normal Java scanning while a Go worker is active. CAS prevents silent cursor overwrite, but repeated contention is an operational fault, not a leader-election mechanism.
+
+## Rollback
+
+1. Stop all Java scanner instances and verify cursor versions have stopped changing.
+2. Capture current cursors, noncanonical units, deposit lifecycle states, ledger totals and pending/failed Outbox rows. Do not delete or rewind rows.
+3. Restart exactly one Go scanner per logical scanner ID against the same MySQL database. It must resume from the Java-written cursor/version.
+4. Confirm the first Go cycle succeeds without stale-cursor retries and that canonical verification completes.
+5. Run reconciliation again. Resolve missing Outbox publication through the existing idempotent publisher; never recreate ledger rows manually.
+
+If either implementation cannot parse the current cursor or canonical history, keep both scanners stopped and restore service from the captured database backup plus audited reconciliation. Do not bypass CAS or edit cursor versions in place.
+
+## Reconciliation
+
+Run these read-only checks before cutover, after cutover, and after rollback:
+
+```sql
+SELECT chain_ref, scanner_id, position_scope, position, unit_hash, version
+FROM scan_cursors ORDER BY chain_ref, scanner_id;
+
+SELECT chain_ref, position_scope, position, COUNT(*) AS canonical_count
+FROM canonical_units WHERE canonical = 1
+GROUP BY chain_ref, position_scope, position HAVING COUNT(*) <> 1;
+
+SELECT chain_ref, transaction_kind, transaction_ref, source, COUNT(*) AS duplicate_count
+FROM deposit_observations
+GROUP BY chain_ref, transaction_kind, transaction_ref, source HAVING COUNT(*) <> 1;
+
+SELECT entry_type, asset_ref,
+	   SUM(CASE WHEN direction = 'credit' THEN CAST(amount_raw AS SIGNED)
+				ELSE -CAST(amount_raw AS SIGNED) END) AS imbalance
+FROM ledger_entries GROUP BY entry_type, asset_ref HAVING imbalance <> 0;
+
+SELECT status, COUNT(*) FROM outbox_events GROUP BY status;
+```
+
+Also compare per-chain counts grouped by deposit state, the highest canonical position, reorged-unit counts and Outbox event types between the pre-change and post-change snapshots. Any unexplained difference blocks cutover completion.

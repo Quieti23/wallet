@@ -21,7 +21,7 @@ class ScanBlockUseCaseTest {
     @Test
     void commitsOnlyTheBlockExtendingTheCheckpoint() {
         ScanLease lease = lease();
-        NodePort node = (chain, height) -> new ChainBlock(chain, height, "hash-11", "hash-10");
+        NodePort node = nodeReturning(new ChainBlock("EVM", 11, "hash-11", "hash-10"));
         RecordingRepository repository = new RecordingRepository(lease, true);
         ScanBlockUseCase useCase = useCase(node, repository);
 
@@ -33,7 +33,7 @@ class ScanBlockUseCaseTest {
 
     @Test
     void rejectsAReorganizedBlockBeforeCommit() {
-        NodePort node = (chain, height) -> new ChainBlock(chain, height, "hash-11b", "other-parent");
+        NodePort node = nodeReturning(new ChainBlock("EVM", 11, "hash-11b", "other-parent"));
         RecordingRepository repository = new RecordingRepository(lease(), true);
 
         assertThrows(ChainContinuityException.class,
@@ -43,7 +43,7 @@ class ScanBlockUseCaseTest {
 
     @Test
     void rejectsCommitAfterFencingTokenIsLost() {
-        NodePort node = (chain, height) -> new ChainBlock(chain, height, "hash-11", "hash-10");
+        NodePort node = nodeReturning(new ChainBlock("EVM", 11, "hash-11", "hash-10"));
 
         assertThrows(LeaseLostException.class,
                 () -> useCase(node, new RecordingRepository(lease(), false))
@@ -56,6 +56,20 @@ class ScanBlockUseCaseTest {
                 repository,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Duration.ofSeconds(30));
+    }
+
+    private static NodePort nodeReturning(ChainBlock block) {
+        return new NodePort() {
+            @Override
+            public ChainCheckpoint initialCheckpoint(String chain) {
+                return new ChainCheckpoint(0, "genesis");
+            }
+
+            @Override
+            public ChainBlock fetchBlock(String chain, long height) {
+                return block;
+            }
+        };
     }
 
     private static ScanLease lease() {
@@ -79,7 +93,13 @@ class ScanBlockUseCaseTest {
         }
 
         @Override
-        public ScanLease acquire(String partitionId, String chain, String ownerId, Instant now, Duration duration) {
+        public ScanLease acquire(
+            String partitionId,
+            String chain,
+            String ownerId,
+            ChainCheckpoint initialCheckpoint,
+            Instant now,
+            Duration duration) {
             return lease;
         }
 
