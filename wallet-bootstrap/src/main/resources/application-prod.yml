@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${WALLET_DB_URL}
+    username: ${WALLET_DB_USERNAME}
+    password: ${WALLET_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${WALLET_DB_POOL_SIZE:16}
+      connection-timeout: 2s
+      validation-timeout: 1s
+
+wallet:
+  scan:
+    owner-id: ${HOSTNAME}

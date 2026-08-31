@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: wallet-service
+  datasource:
+    url: jdbc:h2:mem:wallet;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+wallet:
+  scan:
+    owner-id: ${HOSTNAME:wallet-local}
+    lease-duration: 30s
+    threads: 4
+    queue-capacity: 128
