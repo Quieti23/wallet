@@ -43,7 +43,35 @@ $env:WALLET_DB_PASSWORD = '<from-secret-manager>'
 java -jar wallet-bootstrap\target\wallet-bootstrap-0.1.0-SNAPSHOT.jar
 ```
 
-The unified scanners are disabled by default. Enable only the required chain scanners and provide trusted start checkpoints and provider credentials. The service does not hold private keys or perform transfers.
+The unified scanners are disabled by default. Enable only the required chain scanners and provide trusted start checkpoints and provider credentials. The service does not hold private keys, sign transactions or broadcast transactions.
+
+## Bitcoin wallet API
+
+When `wallet.rpc.enabled=true`, the service exposes Bitcoin Testnet/Signet wallet operations backed by Bitcoin Core. The configured Bitcoin Core wallet must be loaded and funded with test coins. Mainnet is rejected.
+
+Query the wallet balance. Every amount is returned as an integer string in satoshis so JSON consumers do not lose precision:
+
+```powershell
+Invoke-RestMethod http://localhost:8080/api/v1/balances/BTC_TESTNET
+```
+
+Build a funded, unsigned PSBT:
+
+```powershell
+$body = @{
+	chain = 'BTC_TESTNET'
+	toAddress = 'tb1q...'
+	amountAtomicUnits = '125000'
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+	-Method Post `
+	-ContentType 'application/json' `
+	-Body $body `
+	http://localhost:8080/api/v1/transfers/build
+```
+
+The build endpoint delegates coin selection, fee estimation, change creation and PSBT serialization to Bitcoin Core. Selected UTXOs are locked through `walletcreatefundedpsbt` to reduce accidental double selection. The returned PSBT remains unsigned and is never broadcast by this service; inspect its destination, amount, fee and change in a trusted signer before signing.
 
 ## Shadow verification
 

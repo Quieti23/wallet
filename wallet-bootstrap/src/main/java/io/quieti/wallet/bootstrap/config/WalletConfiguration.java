@@ -17,6 +17,7 @@ import io.quieti.wallet.adapter.rpc.HttpJsonRpcTransport;
 import io.quieti.wallet.adapter.rpc.RpcTransport;
 import io.quieti.wallet.adapter.rpc.SolanaRpcPool;
 import io.quieti.wallet.adapter.ton.ToncenterClient;
+import io.quieti.wallet.adapter.wallet.BitcoinWalletAdapter;
 import io.quieti.wallet.application.port.NodePort;
 import io.quieti.wallet.application.port.ScanPartitionRepository;
 import io.quieti.wallet.application.scan.FinalityPolicy;
@@ -29,6 +30,8 @@ import io.quieti.wallet.application.scan.ScannerSupervisor;
 import io.quieti.wallet.application.scan.ShadowScanCoordinator;
 import io.quieti.wallet.application.scan.ShadowScanReporter;
 import io.quieti.wallet.application.scan.SupervisedScanner;
+import io.quieti.wallet.application.transfer.BuildTransferUseCase;
+import io.quieti.wallet.application.transfer.QueryBalanceUseCase;
 import java.util.List;
 import java.time.Clock;
 import java.util.HashMap;
@@ -78,6 +81,29 @@ public class WalletConfiguration {
                 solana.maxSkippedPositions()));
         adapters.put("TON", new TonNodeAdapter(checkpoint(ton), transport(properties, ton, mapper)));
         return new RoutingNodeAdapter(adapters);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "wallet.rpc.enabled", havingValue = "true")
+    BitcoinWalletAdapter bitcoinWalletAdapter(
+            WalletRpcProperties rpcProperties,
+            WalletScannerProperties scannerProperties,
+            ObjectMapper mapper) {
+        String network = scannerProperties.btc().network();
+        WalletRpcProperties.Endpoint endpoint = requiredEndpoint(rpcProperties, network);
+        return new BitcoinWalletAdapter(network, transport(rpcProperties, endpoint, mapper));
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "wallet.rpc.enabled", havingValue = "true")
+    QueryBalanceUseCase queryBalanceUseCase(BitcoinWalletAdapter adapter) {
+        return new QueryBalanceUseCase(adapter);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "wallet.rpc.enabled", havingValue = "true")
+    BuildTransferUseCase buildTransferUseCase(BitcoinWalletAdapter adapter) {
+        return new BuildTransferUseCase(adapter);
     }
 
     private static WalletRpcProperties.Endpoint requiredEndpoint(
